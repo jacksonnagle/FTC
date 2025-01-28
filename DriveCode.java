@@ -36,76 +36,94 @@ public class DriveCode extends LinearOpMode {
         linearMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER); // Reset encoder
         linearMotor.setTargetPosition(0); // Set the initial target position
         linearMotor.setMode(DcMotor.RunMode.RUN_TO_POSITION); // Set to RUN_TO_POSITION
-        linearMotor.setPower(1.0); // Apply power to hold position
+        linearMotor.setPower(1.0); // Apply power to maintain position
 
         // Set initial position for the servo
-        servo.setPosition(0.5); // Neutral middle position
+        servo.setPosition(0.42); // Neutral middle position
+
+        int linearTargetPosition = 0; // Store the current target position of the linear motor
 
         waitForStart();
 
         if (isStopRequested()) return;
 
+        boolean isAutonomousRunning = false;
+
         while (opModeIsActive()) {
-            // Control the robot's driving
-            double drive = -gamepad1.left_stick_y;
-            double strafe = gamepad1.left_stick_x;
-            double rotate = -gamepad1.right_stick_x;
+            if (!isAutonomousRunning) {
+                // Driving controls on gamepad1 (proportional control)
+                double drive = -gamepad1.left_stick_y; // Forward/backward
+                double strafe = gamepad1.left_stick_x; // Strafing
+                double rotate = -gamepad1.right_stick_x; // Rotation
 
-            double frontLeftPower = drive + strafe + rotate;
-            double backLeftPower = drive - strafe + rotate;
-            double frontRightPower = drive - strafe - rotate;
-            double backRightPower = drive + strafe - rotate;
+                double frontLeftPower = drive + strafe + rotate;
+                double backLeftPower = drive - strafe + rotate;
+                double frontRightPower = drive - strafe - rotate;
+                double backRightPower = drive + strafe - rotate;
 
-            frontLeftMotor.setPower(frontLeftPower);
-            backLeftMotor.setPower(backLeftPower);
-            frontRightMotor.setPower(frontRightPower);
-            backRightMotor.setPower(backRightPower);
+                // Normalize powers to ensure no motor is set above 1.0
+                double maxPower = Math.max(Math.max(Math.abs(frontLeftPower), Math.abs(backLeftPower)),
+                        Math.max(Math.abs(frontRightPower), Math.abs(backRightPower)));
+                if (maxPower > 1.0) {
+                    frontLeftPower /= maxPower;
+                    backLeftPower /= maxPower;
+                    frontRightPower /= maxPower;
+                    backRightPower /= maxPower;
+                }
 
-            // D-pad control for sweepMotor
-            if (gamepad1.dpad_up) {
-                sweepMotor.setPower(-0.4); // Spin forward
-            } else if (gamepad1.dpad_down) {
-                sweepMotor.setPower(0.4); // Spin backward
-            } else {
-                sweepMotor.setPower(0); // Stop motor
+                frontLeftMotor.setPower(frontLeftPower);
+                backLeftMotor.setPower(backLeftPower);
+                frontRightMotor.setPower(frontRightPower);
+                backRightMotor.setPower(backRightPower);
+
+                // Linear motor control on gamepad2
+                double linearInput = -gamepad2.right_stick_y; // Up is negative, down is positive
+                if (Math.abs(linearInput) > 0.1) { // Deadzone to avoid accidental movements
+                    linearTargetPosition += (int) (linearInput * 10); // Adjust target position based on input
+                    linearMotor.setTargetPosition(linearTargetPosition); // Update target position
+                    linearMotor.setPower(1.0); // Ensure full power for movement
+                } else {
+                    // Keep the motors holding its position
+                    linearMotor.setTargetPosition(linearTargetPosition);
+                    linearMotor.setPower(1.0);
+                }
+
+                // Sweep motor control on gamepad2 triggers
+                if (gamepad2.right_trigger > 0) {
+                    sweepMotor.setPower(0.4); // Spin forward
+                } else if (gamepad2.left_trigger > 0) {
+                    sweepMotor.setPower(-0.4); // Spin backward
+                } else {
+                    sweepMotor.setPower(0); // Stop motor
+                }
+
+                // Servo control presets on gamepad2
+                if (gamepad2.x) {
+                    // Neutral position
+                    servo.setPosition(0.42);
+                } else if (gamepad2.y) {
+                    // Tilt back halfway
+                    servo.setPosition(0.3);
+                } else if (gamepad2.b) {
+                    // Dump fully forward and reset
+                    servo.setPosition(1.0);
+                    sleep(500); // Wait half a second for dumping
+                    servo.setPosition(0.42); // Return to neutral position
+                }
             }
 
-            // Linear motor control with triggers
-            if (gamepad1.right_trigger > 0) {
-                // Move up
-                int newTargetPosition = linearMotor.getCurrentPosition() + 100;
-                linearMotor.setTargetPosition(newTargetPosition);
-                linearMotor.setPower(1.0);
-            } else if (gamepad1.left_trigger > 0) {
-                // Move down
-                int newTargetPosition = linearMotor.getCurrentPosition() - 100;
-                linearMotor.setTargetPosition(newTargetPosition);
-                linearMotor.setPower(1.0);
-            } else {
-                // Keep the linear motor holding its position
-                linearMotor.setTargetPosition(linearMotor.getTargetPosition());
-                linearMotor.setPower(1.0);
+            // Autonomous mode triggered by left bumper
+            if (gamepad2.left_bumper && !isAutonomousRunning) {
+                isAutonomousRunning = true;
+                AutonomousMode.runAutonomous(this, frontLeftMotor, backLeftMotor, frontRightMotor, backRightMotor, sweepMotor, linearMotor, servo);
+                isAutonomousRunning = false;
             }
-
-            // Servo control with X and Y buttons
-            double servoPosition = servo.getPosition();
-            if (gamepad1.x) {
-                // Move servo forward faster
-                servoPosition += 0.01; // Increased increment
-            } else if (gamepad1.y) {
-                // Move servo backward faster
-                servoPosition -= 0.01; // Increased decrement
-            }
-
-            // Clamp the servo position to its valid range
-            servoPosition = Math.max(0, Math.min(1, servoPosition));
-            servo.setPosition(servoPosition);
 
             // Telemetry for debugging
             telemetry.addData("Servo Position", servo.getPosition());
-            telemetry.addData("Linear Motor Position", linearMotor.getCurrentPosition());
-            telemetry.addData("Linear Motor Target", linearMotor.getTargetPosition());
-            telemetry.addData("Linear Motor Busy", linearMotor.isBusy());
+            telemetry.addData("Linear Motor Target", linearTargetPosition);
+            telemetry.addData("Linear Motor Current", linearMotor.getCurrentPosition());
+            telemetry.addData("Sweep Motor Power", sweepMotor.getPower());
             telemetry.update();
         }
     }
