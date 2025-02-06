@@ -6,11 +6,11 @@ import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
 public class AutonomousMode {
+    // Updated constants for autonomous (we no longer use rotations for linear motor target)
     private static final double LINEAR_MOTOR_POWER = 0.3; // Slow power for raising the linear motor
-    private static final int LINEAR_MOTOR_ROTATIONS = 10; // Target rotations for the linear motor
-    private static final int TICKS_PER_ROTATION = 1425; // Ticks per motor rotation (adjust based on your motor)
-    private static final double SERVO_TILT_POSITION = 0.3; // Servo tilted position
-    private static final double SERVO_DROP_POSITION = 1.0; // Servo drop position
+    // Removed LINEAR_MOTOR_ROTATIONS and TICKS_PER_ROTATION since we are using a fixed target.
+    private static final double SERVO_TILT_POSITION = 0.3;    // Servo tilted position
+    private static final double SERVO_DROP_POSITION = 1.0;    // Servo drop position
     private static final double SERVO_NEUTRAL_POSITION = 0.42; // Servo neutral position
 
     public static void runAutonomous(
@@ -21,10 +21,11 @@ public class AutonomousMode {
             DcMotor backRightMotor,
             DcMotor sweepMotor,
             DcMotor linearMotor,
+            DcMotor armMotor,  // New ArmMotor parameter
             Servo servo
     ) {
-        // Set the target position for the linear motor to reach 10 rotations
-        int targetPosition = LINEAR_MOTOR_ROTATIONS * TICKS_PER_ROTATION;
+        // Instead of using rotations, we now directly set the linear motor target position to 3000.
+        int targetPosition = 0;
         linearMotor.setTargetPosition(targetPosition);
         linearMotor.setMode(DcMotor.RunMode.RUN_TO_POSITION);
         linearMotor.setPower(LINEAR_MOTOR_POWER);
@@ -38,21 +39,26 @@ public class AutonomousMode {
         ElapsedTime timer = new ElapsedTime();
 
         // Step 1: Move 4 inches to the right
-        moveByTime(opMode, frontLeftMotor, backLeftMotor, frontRightMotor, backRightMotor, 0.4, -0.4, -0.4, 0.4, 0.5);
+        moveByTime(opMode, frontLeftMotor, backLeftMotor, frontRightMotor, backRightMotor,
+                0.4, -0.4, -0.4, 0.4, 0.5);
 
         // Step 2: Move forward 25 inches
-        moveByTime(opMode, frontLeftMotor, backLeftMotor, frontRightMotor, backRightMotor, 0.5, 0.5, 0.5, 0.5, 2.5);
+        moveByTime(opMode, frontLeftMotor, backLeftMotor, frontRightMotor, backRightMotor,
+                0.5, 0.5, 0.5, 0.5, 2.5);
 
         // Step 3: Turn 90 degrees counterclockwise
-        moveByTime(opMode, frontLeftMotor, backLeftMotor, frontRightMotor, backRightMotor, -0.4, -0.4, 0.4, 0.4, 1.0);
+        moveByTime(opMode, frontLeftMotor, backLeftMotor, frontRightMotor, backRightMotor,
+                -0.4, -0.4, 0.4, 0.4, 1.0);
 
         // Step 4: Move 10 inches to the right
-        moveByTime(opMode, frontLeftMotor, backLeftMotor, frontRightMotor, backRightMotor, 0.4, -0.4, -0.4, 0.4, 1.0);
+        moveByTime(opMode, frontLeftMotor, backLeftMotor, frontRightMotor, backRightMotor,
+                0.4, -0.4, -0.4, 0.4, 1.0);
 
         // Step 5: Move forward 5 inches
-        moveByTime(opMode, frontLeftMotor, backLeftMotor, frontRightMotor, backRightMotor, 0.5, 0.5, 0.5, 0.5, 0.5);
+        moveByTime(opMode, frontLeftMotor, backLeftMotor, frontRightMotor, backRightMotor,
+                0.5, 0.5, 0.5, 0.5, 0.5);
 
-        // Step 6: Wait for the linear motor to finish raising, if not already done
+        // Step 6: Wait for the linear motor to finish raising (i.e., reaching position 3000)
         while (opMode.opModeIsActive() && linearMotor.isBusy() && !isPaused) {
             if (opMode.gamepad2.right_bumper) {
                 if (!wasPaused) {
@@ -83,12 +89,15 @@ public class AutonomousMode {
 
         // Stop all motors
         stopAllMotors(frontLeftMotor, backLeftMotor, frontRightMotor, backRightMotor, linearMotor);
+        // Stop the arm motor as well
+        armMotor.setPower(0);
 
         opMode.telemetry.addData("Autonomous", "Completed");
         opMode.telemetry.update();
     }
 
-    private static void moveByTime(LinearOpMode opMode, DcMotor fl, DcMotor bl, DcMotor fr, DcMotor br, double flPower, double blPower, double frPower, double brPower, double timeSec) {
+    private static void moveByTime(LinearOpMode opMode, DcMotor fl, DcMotor bl, DcMotor fr, DcMotor br,
+                                   double flPower, double blPower, double frPower, double brPower, double timeSec) {
         ElapsedTime timer = new ElapsedTime();
         timer.reset();
 
