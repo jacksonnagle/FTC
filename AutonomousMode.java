@@ -6,12 +6,12 @@ import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
 public class AutonomousMode {
-    // Updated constants for autonomous (we no longer use rotations for linear motor target)
-    private static final double LINEAR_MOTOR_POWER = 0.3; // Slow power for raising the linear motor
-    // Removed LINEAR_MOTOR_ROTATIONS and TICKS_PER_ROTATION since we are using a fixed target.
-    private static final double SERVO_TILT_POSITION = 0.3;    // Servo tilted position
-    private static final double SERVO_DROP_POSITION = 1.0;    // Servo drop position
-    private static final double SERVO_NEUTRAL_POSITION = 0.42; // Servo neutral position
+    // Constants for autonomous
+    private static final double LINEAR_MOTOR_POWER = 1.0;         // Power for raising the linear motor
+    private static final double SERVO_TILT_POSITION = 0.3;          // Servo tilted position
+    private static final double SERVO_DROP_POSITION = 1.0;          // Servo drop position
+    private static final double SERVO_NEUTRAL_POSITION = 0.42;      // Servo neutral position
+    private static final int ARM_HALF_POSITION = 70;                // Safe half-up position for the arm
 
     public static void runAutonomous(
             LinearOpMode opMode,
@@ -21,19 +21,30 @@ public class AutonomousMode {
             DcMotor backRightMotor,
             DcMotor sweepMotor,
             DcMotor linearMotor,
-            DcMotor armMotor,  // New ArmMotor parameter
+            DcMotor armMotor,  // ArmMotor parameter
             Servo servo
     ) {
-        // Instead of using rotations, we now directly set the linear motor target position to 3000.
-        int targetPosition = 0;
-        linearMotor.setTargetPosition(targetPosition);
+        // --- Initialize Linear Motor ---
+        // Immediately set the linear motor target to 13400
+        int linearTargetPosition = 13400;
+        linearMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        linearMotor.setTargetPosition(linearTargetPosition);
         linearMotor.setMode(DcMotor.RunMode.RUN_TO_POSITION);
         linearMotor.setPower(LINEAR_MOTOR_POWER);
 
-        // Tilt the servo after starting the linear motor
+        // --- Initialize Arm Motor ---
+        // Set the arm motor to the half-up posture and hold it there.
+        armMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        int armTargetPosition = ARM_HALF_POSITION;
+        armMotor.setTargetPosition(armTargetPosition);
+        armMotor.setMode(DcMotor.RunMode.RUN_TO_POSITION);
+        armMotor.setPower(0.3);
+
+        // --- Initialize Servo ---
+        // Tilt the servo immediately.
         servo.setPosition(SERVO_TILT_POSITION);
 
-        // Initialize variables for pausing and resuming
+        // Variables for pausing/resuming the linear motor if needed.
         boolean isPaused = false;
         boolean wasPaused = false;
         ElapsedTime timer = new ElapsedTime();
@@ -58,8 +69,9 @@ public class AutonomousMode {
         moveByTime(opMode, frontLeftMotor, backLeftMotor, frontRightMotor, backRightMotor,
                 0.5, 0.5, 0.5, 0.5, 0.5);
 
-        // Step 6: Wait for the linear motor to finish raising (i.e., reaching position 3000)
+        // Step 6: Wait for the linear motor to finish raising (i.e., reaching position 13400)
         while (opMode.opModeIsActive() && linearMotor.isBusy() && !isPaused) {
+            // Allow pausing/resuming via gamepad2's right bumper if desired.
             if (opMode.gamepad2.right_bumper) {
                 if (!wasPaused) {
                     isPaused = true;
@@ -74,9 +86,8 @@ public class AutonomousMode {
                     opMode.telemetry.update();
                     wasPaused = false;
                 }
-                while (opMode.gamepad2.right_bumper) {
-                    // Wait until the bumper is released to avoid rapid toggling
-                }
+                // Wait for the bumper to be released to avoid rapid toggling.
+                while (opMode.gamepad2.right_bumper) { /* do nothing */ }
             }
             opMode.telemetry.addData("Linear Motor Position", linearMotor.getCurrentPosition());
             opMode.telemetry.update();
@@ -85,11 +96,11 @@ public class AutonomousMode {
         // Step 7: Drop the payload
         servo.setPosition(SERVO_DROP_POSITION);
         opMode.sleep(500); // Wait for the servo to drop
-        servo.setPosition(SERVO_NEUTRAL_POSITION); // Reset the servo
+        servo.setPosition(SERVO_NEUTRAL_POSITION); // Reset the servo to neutral
 
-        // Stop all motors
+        // Stop all drive motors
         stopAllMotors(frontLeftMotor, backLeftMotor, frontRightMotor, backRightMotor, linearMotor);
-        // Stop the arm motor as well
+        // Stop the arm motor (it remains at its half-up target)
         armMotor.setPower(0);
 
         opMode.telemetry.addData("Autonomous", "Completed");
